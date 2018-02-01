@@ -39,7 +39,10 @@ void proto_reg_handoff_macsec(void);
 #define TCI_C_MASK   0x04
 #define AN_MASK      0x03
 
-
+/* SecTAG Masks */
+#define MF_MASK       0x1
+#define SLHF_MASK   0x10
+#define SL_MASK   0x0FFE
 static int proto_macsec = -1;
 static int hf_macsec_TCI                   = -1;
 static int hf_macsec_TCI_V                 = -1;
@@ -49,7 +52,9 @@ static int hf_macsec_TCI_SCB               = -1;
 static int hf_macsec_TCI_E                 = -1;
 static int hf_macsec_TCI_C                 = -1;
 static int hf_macsec_AN                    = -1;
+static int hf_macsec_MF                    = -1;
 static int hf_macsec_SL                    = -1;
+static int hf_macsec_SLHF                    = -1;
 static int hf_macsec_PN                    = -1;
 static int hf_macsec_SCI_system_identifier = -1;
 static int hf_macsec_SCI_port_identifier   = -1;
@@ -79,9 +84,9 @@ static int dissect_macsec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
     icv_length = 16;  /* Fixed size for version 0 */
 
     if (tci_an_field & TCI_SC_MASK) {
-        sectag_length = 14;  /* optional SCI present */
+        sectag_length = 15;  /* optional SCI present */
     } else {
-        sectag_length = 6;
+        sectag_length = 7;
     }
 
     /* Check for short length */
@@ -116,16 +121,22 @@ static int dissect_macsec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
 
         proto_tree_add_bitmask_with_flags(macsec_tree, tvb, 0,
                 hf_macsec_TCI, ett_macsec_tci, flags, ENC_NA, BMT_NO_TFS);
-
         proto_tree_add_item(macsec_tree, hf_macsec_AN, tvb, 0, 1, ENC_NA);
-        proto_tree_add_item(macsec_tree, hf_macsec_SL, tvb, 1, 1, ENC_NA);
-        proto_tree_add_item(macsec_tree, hf_macsec_PN, tvb, 2, 4, ENC_BIG_ENDIAN);
+        proto_tree_add_item(macsec_tree, hf_macsec_PN, tvb, 1, 4, ENC_BIG_ENDIAN);
 
-        if (sectag_length == 14) {
+        if (sectag_length == 15) {
             proto_tree_add_item(macsec_tree, hf_macsec_SCI_system_identifier,
-                    tvb, 6, 6, ENC_NA);
+                    tvb, 5, 6, ENC_NA);
             proto_tree_add_item(macsec_tree, hf_macsec_SCI_port_identifier, tvb,
-                    12, 2, ENC_BIG_ENDIAN);
+                    11, 2, ENC_BIG_ENDIAN);
+
+            proto_tree_add_item(macsec_tree, hf_macsec_MF, tvb, 13, 1, ENC_NA);
+            proto_tree_add_item(macsec_tree, hf_macsec_SL, tvb, 13, 2, ENC_LITTLE_ENDIAN);
+            proto_tree_add_item(macsec_tree, hf_macsec_SLHF, tvb, 14, 1, ENC_NA);
+        } else {
+            proto_tree_add_item(macsec_tree, hf_macsec_MF, tvb, 5, 1, ENC_NA);
+            proto_tree_add_item(macsec_tree, hf_macsec_SL, tvb, 5, 2, ENC_LITTLE_ENDIAN);
+            proto_tree_add_item(macsec_tree, hf_macsec_SLHF, tvb, 6, 1, ENC_NA);
         }
 
         proto_tree_add_item(macsec_tree, hf_macsec_ICV, tvb, icv_offset,
@@ -173,10 +184,6 @@ proto_register_macsec(void)
             { "AN", "macsec.AN", FT_UINT8, BASE_HEX,
               NULL, AN_MASK, "Association Number", HFILL }
         },
-        { &hf_macsec_SL,
-            { "Short length", "macsec.SL", FT_UINT8, BASE_DEC,
-              NULL, 0, NULL, HFILL }
-        },
         { &hf_macsec_PN,
             { "Packet number", "macsec.PN", FT_UINT32, BASE_DEC,
               NULL, 0, NULL, HFILL }
@@ -189,6 +196,18 @@ proto_register_macsec(void)
             { "Port Identifier", "macsec.SCI.port_identifier", FT_UINT16, BASE_DEC,
               NULL, 0, NULL, HFILL }
         },
+        { &hf_macsec_MF,
+            { "MF", "macsec.MF", FT_BOOLEAN, 8,
+              TFS(&tfs_set_notset), MF_MASK, "More Fragmens", HFILL }
+        },
+        { &hf_macsec_SL,
+            { "Segment length", "macsec.SL", FT_UINT16, BASE_DEC,
+              NULL, SL_MASK, NULL, HFILL }
+        },
+        { &hf_macsec_SLHF,
+            { "SLHF", "macsec.SLHF", FT_BOOLEAN, 8,
+              TFS(&tfs_set_notset), SLHF_MASK, "Segment Header Follows", HFILL }
+        },
         { &hf_macsec_ICV,
             { "ICV", "macsec.ICV", FT_BYTES, BASE_NONE,
               NULL, 0, NULL, HFILL }
@@ -198,7 +217,7 @@ proto_register_macsec(void)
     /* Setup protocol subtree array */
     static gint *ett[] = {
         &ett_macsec,
-        &ett_macsec_tci
+        &ett_macsec_tci,
     };
 
     /* Register the protocol name and description */
@@ -229,4 +248,3 @@ proto_reg_handoff_macsec(void)
  * vi: set shiftwidth=4 tabstop=8 expandtab:
  * :indentSize=4:tabSize=8:noTabs=true:
  */
-
